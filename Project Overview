@@ -1,0 +1,180 @@
+1. Prompting Strategy
+Guiding the LLM to Identify and Classify Materials:
+
+To extract and classify materials (e.g., product data, job listings, research metadata), I used task-specific, context-aware prompts that instruct the LLM with clarity and desired output format. Key strategies included:
+
+Instructional Prompting:
+Example:
+
+“From the text below, extract all product names, prices, and categories. Return the output as a JSON list.”
+
+Role-based Prompting:
+Framed the LLM as an “expert data extractor” or “semantic classifier” to encourage more accurate interpretations.
+
+Few-shot Examples (optional):
+Provided sample input-output formats to help the model learn structure expectations (especially with GPT-4).
+
+Output Format Constraints:
+Requested responses in structured formats (e.g., JSON, list of dicts) to simplify post-processing and parsing.
+
+
+
+✅ Libraries Used:
+requests – to fetch HTML
+
+bs4 (BeautifulSoup) – to parse HTML
+
+openai – to use GPT-4 for understanding and extraction
+
+dotenv – to manage API keys
+
+
+Colab / Jupyter Notebook Compatible Code
+
+# Step 1: Install dependencies (if not already installed)
+!pip install openai beautifulsoup4 requests python-dotenv
+
+# Step 2: Import libraries
+import os
+import requests
+from bs4 import BeautifulSoup
+from dotenv import load_dotenv
+import openai
+import json
+
+# Step 3: Load your OpenAI API key
+load_dotenv()
+openai.api_key = os.getenv("OPENAI_API_KEY")  # Store your key in .env as OPENAI_API_KEY
+
+# Step 4: Define the target URL to scrape
+url = "https://realpython.github.io/fake-jobs/"
+response = requests.get(url)
+soup = BeautifulSoup(response.text, "html.parser")
+text_content = soup.get_text(separator="\n")
+
+# Step 5: Prompt Engineering - ask GPT-4 to extract structured job info
+prompt = f"""
+You are a data extractor. Extract job listings from the text below.
+
+Each job listing should include:
+- Job Title
+- Company Name
+- Location
+
+Output should be a JSON list, like:
+[
+  {{"title": "...", "company": "...", "location": "..."}},
+  ...
+]
+
+Text:
+{text_content}
+"""
+
+# Step 6: Call OpenAI API (gpt-4)
+response = openai.ChatCompletion.create(
+    model="gpt-4",
+    messages=[
+        {"role": "user", "content": prompt}
+    ],
+    temperature=0.2
+)
+
+# Step 7: Extract and print JSON output
+extracted = response['choices'][0]['message']['content']
+print("🧠 Extracted Data:")
+print(extracted)
+
+# Optional: Convert to Python list for further use
+try:
+    data_list = json.loads(extracted)
+except json.JSONDecodeError:
+    print("⚠️ JSON Parsing Error. Response may be improperly formatted.")
+
+
+
+📌 How to Set Up .env File
+Create a .env file in the same folder as your notebook/script:
+
+OPENAI_API_KEY=your_openai_api_key_here
+🔍 What’s Handled Automatically
+✅ Nested HTML is flattened by .get_text(separator="\n")
+
+✅ Label inconsistencies (e.g., "Place", "City", etc.) are inferred by GPT
+
+✅ Output is structured as JSON for easy reuse
+
+
+2. Pipeline Structure (LangChain + Prompt Strategy)
+Pipeline Components (LangChain-Based):
+
+[Data Scraper] → [Preprocessor] → [LLM Chain] → [Output Parser] → [Storage]
+Document Loader:
+Raw HTML/text loaded using LangChain’s WebBaseLoader, or via BeautifulSoup if external.
+
+Text Splitter:
+Used RecursiveCharacterTextSplitter to divide long pages into manageable chunks (< 4,096 tokens) for accurate parsing.
+
+LLMChain Configuration:
+
+Model: ChatOpenAI (gpt-4)
+
+PromptTemplate: Instructional + output format hint
+
+Chain type: LLMChain or MapReduceChain (for summarizing or combining multi-part content)
+
+Tool Integration:
+For advanced extraction (e.g., links, nested JSON), included LangChain tools such as:
+
+StructuredOutputParser for schema validation
+
+tool calling (optional) for functions like filtering, translation
+
+3. Handling Edge Cases
+a. Nested HTML Structures:
+
+Used BeautifulSoup to flatten complex tags (e.g., multiple <div>, <span> layers).
+
+Sent cleaned text to the LLM with tag references stripped or standardized.
+
+b. Map-Only Data (e.g., JS-based dynamic maps):
+
+Identified if the content is loaded dynamically via JS (e.g., Leaflet, Google Maps).
+
+Used Selenium to render the page and capture hidden/JS-loaded DOM elements.
+
+Fallback: Described to LLM that “some content may be spatial/geolocated,” and asked for best effort extraction.
+
+c. Inconsistent Labeling:
+
+Prompt asked the LLM to infer meaning (e.g., “If the location is missing but city names appear, include them as location fields”).
+
+Used redundancy: multiple labels (“location,” “city,” “place”) parsed via synonyms and contextual cues.
+
+4. Proposed Approach (if Code Not Completed)
+Libraries & Tools:
+Purpose	Tool	
+HTML Parsing -	BeautifulSoup, Selenium	For flexible scraping, handling JS content
+LLM Interface	- LangChain, OpenAI GPT-4 API	Modular pipeline and chain support
+Prompt Engineering -	PromptTemplate, LLMChain	Structured prompt use
+Output Parsing	- pydantic, json.loads()	Validate and parse structured responses
+Optional Extras -	Playwright, Trafilatura	Faster dynamic scraping or better boilerplate removal
+
+
+Strengths of LLM Method:
+
+Flexible and Semantic Extraction: Adapts to messy, unstructured HTML or inconsistent tags.
+
+Quick Setup: Less regex or brittle scraping logic.
+
+Context Awareness: Can infer missing fields based on surrounding context.
+
+
+
+Limitations:
+
+Token Limits: May truncate large pages or fail if split poorly.
+
+Hallucination Risk: May fabricate data if the prompt is ambiguous or input is unclear.
+
+Latency and Cost: LLM inference is slower and more costly than regex parsing.
